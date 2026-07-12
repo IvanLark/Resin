@@ -33,6 +33,7 @@ type PlatformResponse struct {
 	ReverseProxyFixedAccountHeader   string   `json:"reverse_proxy_fixed_account_header"`
 	AllocationPolicy                 string   `json:"allocation_policy"`
 	PassiveCircuitBreakerDisabled    bool     `json:"passive_circuit_breaker_disabled"`
+	MaxAcceptableLatencyMs           int      `json:"max_acceptable_latency_ms"`
 	UpdatedAt                        string   `json:"updated_at"`
 }
 
@@ -51,6 +52,7 @@ func platformToResponse(p model.Platform) PlatformResponse {
 		ReverseProxyFixedAccountHeader:   fixedHeader,
 		AllocationPolicy:                 p.AllocationPolicy,
 		PassiveCircuitBreakerDisabled:    p.PassiveCircuitBreakerDisabled,
+		MaxAcceptableLatencyMs:           p.MaxAcceptableLatencyMs,
 		UpdatedAt:                        time.Unix(0, p.UpdatedAtNs).UTC().Format(time.RFC3339Nano),
 	}
 }
@@ -77,6 +79,7 @@ type platformConfig struct {
 	ReverseProxyFixedAccountHeader   string
 	AllocationPolicy                 string
 	PassiveCircuitBreakerDisabled    bool
+	MaxAcceptableLatencyMs           int
 }
 
 func normalizePlatformMissAction(raw string) string {
@@ -122,6 +125,7 @@ func platformConfigFromModel(mp model.Platform) platformConfig {
 		ReverseProxyFixedAccountHeader:   normalizeHeaderFieldName(mp.ReverseProxyFixedAccountHeader),
 		AllocationPolicy:                 mp.AllocationPolicy,
 		PassiveCircuitBreakerDisabled:    mp.PassiveCircuitBreakerDisabled,
+		MaxAcceptableLatencyMs:           mp.MaxAcceptableLatencyMs,
 	}
 }
 
@@ -137,6 +141,7 @@ func (cfg platformConfig) toModel(id string, updatedAtNs int64) model.Platform {
 		ReverseProxyFixedAccountHeader:   cfg.ReverseProxyFixedAccountHeader,
 		AllocationPolicy:                 cfg.AllocationPolicy,
 		PassiveCircuitBreakerDisabled:    cfg.PassiveCircuitBreakerDisabled,
+		MaxAcceptableLatencyMs:           cfg.MaxAcceptableLatencyMs,
 		UpdatedAtNs:                      updatedAtNs,
 	}
 }
@@ -157,6 +162,7 @@ func (cfg platformConfig) toRuntime(id string) (*platform.Platform, error) {
 		cfg.ReverseProxyFixedAccountHeader,
 		cfg.AllocationPolicy,
 		cfg.PassiveCircuitBreakerDisabled,
+		cfg.MaxAcceptableLatencyMs,
 	), nil
 }
 
@@ -256,6 +262,14 @@ func setPlatformAllocationPolicy(cfg *platformConfig, policy string) *ServiceErr
 	return nil
 }
 
+func setPlatformMaxAcceptableLatencyMs(cfg *platformConfig, ms int) *ServiceError {
+	if err := platform.ValidateMaxAcceptableLatencyMs(ms); err != nil {
+		return invalidArg(err.Error())
+	}
+	cfg.MaxAcceptableLatencyMs = ms
+	return nil
+}
+
 func validatePlatformConfig(cfg *platformConfig, validateRegionFilters bool) *ServiceError {
 	if validateRegionFilters {
 		if err := platform.ValidateRegionFilters(cfg.RegionFilters); err != nil {
@@ -264,6 +278,9 @@ func validatePlatformConfig(cfg *platformConfig, validateRegionFilters bool) *Se
 	}
 	if err := validatePlatformEmptyAccountConfig(cfg); err != nil {
 		return err
+	}
+	if err := platform.ValidateMaxAcceptableLatencyMs(cfg.MaxAcceptableLatencyMs); err != nil {
+		return invalidArg(err.Error())
 	}
 	return nil
 }
@@ -335,6 +352,7 @@ type CreatePlatformRequest struct {
 	ReverseProxyFixedAccountHeader   *string  `json:"reverse_proxy_fixed_account_header"`
 	AllocationPolicy                 *string  `json:"allocation_policy"`
 	PassiveCircuitBreakerDisabled    *bool    `json:"passive_circuit_breaker_disabled"`
+	MaxAcceptableLatencyMs           *int     `json:"max_acceptable_latency_ms"`
 }
 
 // CreatePlatform creates a new platform.
@@ -391,6 +409,11 @@ func (s *ControlPlaneService) CreatePlatform(req CreatePlatformRequest) (*Platfo
 	}
 	if req.PassiveCircuitBreakerDisabled != nil {
 		cfg.PassiveCircuitBreakerDisabled = *req.PassiveCircuitBreakerDisabled
+	}
+	if req.MaxAcceptableLatencyMs != nil {
+		if err := setPlatformMaxAcceptableLatencyMs(&cfg, *req.MaxAcceptableLatencyMs); err != nil {
+			return nil, err
+		}
 	}
 	if err := validatePlatformConfig(&cfg, true); err != nil {
 		return nil, err
@@ -508,6 +531,13 @@ func (s *ControlPlaneService) UpdatePlatform(id string, patchJSON json.RawMessag
 		return nil, err
 	} else if ok {
 		cfg.PassiveCircuitBreakerDisabled = disabled
+	}
+	if ms, ok, err := patch.optionalInt("max_acceptable_latency_ms"); err != nil {
+		return nil, err
+	} else if ok {
+		if err := setPlatformMaxAcceptableLatencyMs(&cfg, ms); err != nil {
+			return nil, err
+		}
 	}
 	if err := validatePlatformConfig(&cfg, regionFiltersPatched); err != nil {
 		return nil, err

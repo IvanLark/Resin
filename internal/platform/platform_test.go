@@ -10,13 +10,17 @@ import (
 	"github.com/Resinat/Resin/internal/testutil"
 )
 
-// makeFullyRoutableEntry creates a NodeEntry that passes all 5 filter conditions.
+// makeFullyRoutableEntry creates a NodeEntry that passes all filter conditions.
 func makeFullyRoutableEntry(hash node.Hash, subIDs ...string) *node.NodeEntry {
 	e := node.NewNodeEntry(hash, nil, time.Now(), 16)
 	for _, id := range subIDs {
 		e.AddSubscriptionID(id)
 	}
-	// Set all conditions to pass.
+	// Set all conditions to pass（含权威域名样本，便于延迟硬过滤测试）.
+	e.LatencyTable.LoadEntry("cloudflare.com", node.DomainLatencyStats{
+		Ewma:        100 * time.Millisecond,
+		LastUpdated: time.Now(),
+	})
 	e.LatencyTable.LoadEntry("example.com", node.DomainLatencyStats{
 		Ewma:        100 * time.Millisecond,
 		LastUpdated: time.Now(),
@@ -40,7 +44,7 @@ func TestPlatform_EvaluateNode_AllPass(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 1 {
 		t.Fatalf("expected 1 routable node, got %d", p.View().Size())
@@ -55,7 +59,7 @@ func TestPlatform_EvaluateNode_CircuitOpen(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("circuit-broken node should not be routable")
@@ -74,7 +78,7 @@ func TestPlatform_EvaluateNode_NoLatency(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("node without latency should not be routable")
@@ -89,7 +93,7 @@ func TestPlatform_EvaluateNode_NoOutbound(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("node without outbound should not be routable")
@@ -104,7 +108,7 @@ func TestPlatform_EvaluateNode_NoEgressIP(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("node without egress IP should not be routable")
@@ -120,7 +124,7 @@ func TestPlatform_EvaluateNode_RegexFilter(t *testing.T) {
 	// Lookup returns "TestSub/us-node" which matches "us".
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 1 {
 		t.Fatal("node matching regex should be routable")
@@ -130,7 +134,7 @@ func TestPlatform_EvaluateNode_RegexFilter(t *testing.T) {
 	p2 := NewPlatform("p2", "Test", []*regexp.Regexp{regexp.MustCompile("^jp")}, nil)
 	p2.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p2.View().Size() != 0 {
 		t.Fatal("node not matching regex should not be routable")
@@ -144,7 +148,7 @@ func TestPlatform_EvaluateNode_RegionFilter(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 1 {
 		t.Fatal("node in allowed region should be routable")
@@ -154,7 +158,7 @@ func TestPlatform_EvaluateNode_RegionFilter(t *testing.T) {
 	p2 := NewPlatform("p2", "Test", nil, []string{"jp"})
 	p2.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p2.View().Size() != 0 {
 		t.Fatal("node not in allowed region should not be routable")
@@ -170,7 +174,7 @@ func TestPlatform_EvaluateNode_RegionFilter_NoEgressIP(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("node without egress IP should not be routable")
@@ -191,7 +195,7 @@ func TestPlatform_EvaluateNode_RegionFilter_PrefersStoredRegion(t *testing.T) {
 
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, geoLookup)
+	}, alwaysLookup, geoLookup, nil)
 
 	if p.View().Size() != 1 {
 		t.Fatal("stored region should be used before GeoIP fallback")
@@ -209,7 +213,7 @@ func TestPlatform_EvaluateNode_RegionFilter_ExcludeOnlyUnknownRegion(t *testing.
 	geoLookup := func(netip.Addr) string { return "" }
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h, entry)
-	}, alwaysLookup, geoLookup)
+	}, alwaysLookup, geoLookup, nil)
 
 	if p.View().Size() != 0 {
 		t.Fatal("node with unknown region should not be routable when region filters are configured")
@@ -294,28 +298,28 @@ func TestPlatform_NotifyDirty_AddRemove(t *testing.T) {
 	}
 
 	// Initially empty — add via NotifyDirty.
-	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup)
+	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup, nil)
 	if p.View().Size() != 1 {
 		t.Fatal("NotifyDirty should add passing node")
 	}
 
 	// Circuit-break → NotifyDirty removes.
 	entry.CircuitOpenSince.Store(time.Now().UnixNano())
-	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup)
+	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup, nil)
 	if p.View().Size() != 0 {
 		t.Fatal("NotifyDirty should remove circuit-broken node")
 	}
 
 	// Recover → NotifyDirty re-adds.
 	entry.CircuitOpenSince.Store(0)
-	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup)
+	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup, nil)
 	if p.View().Size() != 1 {
 		t.Fatal("NotifyDirty should re-add recovered node")
 	}
 
 	// Delete from pool → NotifyDirty removes.
 	delete(entryStore, h)
-	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup)
+	p.NotifyDirty(h, getEntry, alwaysLookup, usGeoLookup, nil)
 	if p.View().Size() != 0 {
 		t.Fatal("NotifyDirty should remove deleted node")
 	}
@@ -332,7 +336,7 @@ func TestPlatform_FullRebuild_ClearsOld(t *testing.T) {
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h1, e1)
 		fn(h2, e2)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 2 {
 		t.Fatalf("expected 2, got %d", p.View().Size())
@@ -341,12 +345,71 @@ func TestPlatform_FullRebuild_ClearsOld(t *testing.T) {
 	// Second rebuild with only 1 node — old entries cleared.
 	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
 		fn(h1, e1)
-	}, alwaysLookup, usGeoLookup)
+	}, alwaysLookup, usGeoLookup, nil)
 
 	if p.View().Size() != 1 {
 		t.Fatalf("expected 1 after rebuild, got %d", p.View().Size())
 	}
 	if p.View().Contains(h2) {
 		t.Fatal("h2 should have been removed by rebuild")
+	}
+}
+
+func TestPlatform_EvaluateNode_MaxAcceptableLatency(t *testing.T) {
+	authorities := []string{"cloudflare.com"}
+
+	p := NewPlatform("p1", "Test", nil, nil)
+	p.MaxAcceptableLatencyMs = 200
+	hOk := makeHash(`{"type":"ss","n":"ok"}`)
+	eOk := makeFullyRoutableEntry(hOk, "sub1")
+	// 权威平均 100ms < 200 → 进池
+	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
+		fn(hOk, eOk)
+	}, alwaysLookup, usGeoLookup, authorities)
+	if p.View().Size() != 1 {
+		t.Fatalf("expected ok node routable, size=%d", p.View().Size())
+	}
+
+	hBad := makeHash(`{"type":"ss","n":"bad"}`)
+	eBad := makeFullyRoutableEntry(hBad, "sub1")
+	eBad.LatencyTable.LoadEntry("cloudflare.com", node.DomainLatencyStats{
+		Ewma:        3000 * time.Millisecond,
+		LastUpdated: time.Now(),
+	})
+	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
+		fn(hOk, eOk)
+		fn(hBad, eBad)
+	}, alwaysLookup, usGeoLookup, authorities)
+	if p.View().Size() != 1 || !p.View().Contains(hOk) || p.View().Contains(hBad) {
+		t.Fatalf("expected only ok node; size=%d containsBad=%v", p.View().Size(), p.View().Contains(hBad))
+	}
+
+	// 0 = 关闭硬过滤
+	p.MaxAcceptableLatencyMs = 0
+	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
+		fn(hOk, eOk)
+		fn(hBad, eBad)
+	}, alwaysLookup, usGeoLookup, authorities)
+	if p.View().Size() != 2 {
+		t.Fatalf("cap disabled: expected 2 routable, got %d", p.View().Size())
+	}
+
+	// 策略 A：有延迟但无权威样本时，阈值开启仍放行
+	p.MaxAcceptableLatencyMs = 50
+	hNoAuth := makeHash(`{"type":"ss","n":"no-auth"}`)
+	eNoAuth := node.NewNodeEntry(hNoAuth, nil, time.Now(), 16)
+	eNoAuth.AddSubscriptionID("sub1")
+	eNoAuth.LatencyTable.LoadEntry("example.com", node.DomainLatencyStats{
+		Ewma:        5000 * time.Millisecond,
+		LastUpdated: time.Now(),
+	})
+	ob := testutil.NewNoopOutbound()
+	eNoAuth.Outbound.Store(&ob)
+	eNoAuth.SetEgressIP(netip.MustParseAddr("5.5.5.5"))
+	p.FullRebuild(func(fn func(node.Hash, *node.NodeEntry) bool) {
+		fn(hNoAuth, eNoAuth)
+	}, alwaysLookup, usGeoLookup, authorities)
+	if p.View().Size() != 1 {
+		t.Fatal("strategy A: node without authority sample should still pass when only non-authority latency exists")
 	}
 }

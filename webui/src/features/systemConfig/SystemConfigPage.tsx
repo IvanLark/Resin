@@ -72,7 +72,7 @@ const FIELD_LABELS: Record<keyof RuntimeConfig, string> = {
 };
 
 const ALLOCATION_POLICY_LABELS: Record<string, string> = {
-  BALANCED: "均衡",
+  BALANCED: "均衡（偏空闲分散）",
   PREFER_LOW_LATENCY: "优先低延迟",
   PREFER_IDLE_IP: "优先空闲出口 IP",
 };

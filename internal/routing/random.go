@@ -2,6 +2,7 @@ package routing
 
 import (
 	"errors"
+	"math"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -9,6 +10,10 @@ import (
 	"github.com/Resinat/Resin/internal/node"
 	"github.com/Resinat/Resin/internal/platform"
 )
+
+// balancedIdleExponent 控制 BALANCED 策略中空闲权重。
+// Score = (LeaseCount+1)^γ * LatencyMs，γ>1 时更偏向分散到空闲出口。
+const balancedIdleExponent = 1.5
 
 var ErrNoAvailableNodes = errors.New("no available nodes")
 
@@ -156,21 +161,27 @@ func calculateScore(
 		}
 	}
 
-	// If latency is 0 (empty/incompatible), score = LeaseCount strictly.
-	if latency <= 0 {
-		return float64(leaseCount)
-	}
-
-	// Policy-based scoring.
+	// Policy-based scoring. Lower is better.
 	switch plat.AllocationPolicy {
 	case platform.AllocationPolicyPreferLowLatency:
+		if latency <= 0 {
+			return float64(leaseCount)
+		}
 		return float64(latency)
 	case platform.AllocationPolicyPreferIdleIP:
 		return float64(leaseCount)
 	case platform.AllocationPolicyBalanced:
 		fallthrough
 	default:
-		// (LeaseCount + 1) * Latency
-		return float64(leaseCount+1) * float64(latency)
+		// 延迟不可比时仍用 (lease+1)^γ，保持“空闲优先”一致。
+		idleFactor := math.Pow(float64(leaseCount+1), balancedIdleExponent)
+		if latency <= 0 {
+			return idleFactor
+		}
+		latencyMs := float64(latency) / float64(time.Millisecond)
+		if latencyMs < 1 {
+			latencyMs = 1
+		}
+		return idleFactor * latencyMs
 	}
 }

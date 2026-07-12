@@ -443,6 +443,14 @@ export function PlatformDetailPage() {
                   <strong>{t(allocationPolicyLabel[platform.allocation_policy])}</strong>
                 </span>
                 <span className="platform-fact">
+                  <span>{t("延迟上限")}</span>
+                  <strong>
+                    {platform.max_acceptable_latency_ms > 0
+                      ? `${platform.max_acceptable_latency_ms} ms`
+                      : t("未限制")}
+                  </strong>
+                </span>
+                <span className="platform-fact">
                   <span>{t("未命中策略")}</span>
                   <strong>{t(missActionLabel[platform.reverse_proxy_miss_action])}</strong>
                 </span>
@@ -564,6 +572,28 @@ export function PlatformDetailPage() {
                         </option>
                       ))}
                     </Select>
+                  </div>
+
+                  <div className="field-group">
+                    <label className="field-label" htmlFor="detail-edit-max-latency">
+                      {t("最大可接受延迟（ms）")}
+                    </label>
+                    <Input
+                      id="detail-edit-max-latency"
+                      type="number"
+                      min={0}
+                      max={600000}
+                      step={1}
+                      placeholder={t("0 表示不限制，例如 1000")}
+                      invalid={Boolean(editForm.formState.errors.max_acceptable_latency_ms)}
+                      {...editForm.register("max_acceptable_latency_ms")}
+                    />
+                    {editForm.formState.errors.max_acceptable_latency_ms?.message ? (
+                      <p className="field-error">{t(editForm.formState.errors.max_acceptable_latency_ms.message)}</p>
+                    ) : null}
+                    <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                      {t("按权威域名平均延迟硬过滤；超过该值的节点不会进入本平台可路由池。0 表示关闭。")}
+                    </p>
                   </div>
 
                   <div className="field-group">

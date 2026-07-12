@@ -101,6 +101,7 @@ func (p *routerTestPool) rebuildPlatformView(plat *platform.Platform) {
 		},
 		func(_ string, _ node.Hash) (string, bool, []string, bool) { return "", true, nil, true },
 		func(_ netip.Addr) string { return "" },
+		nil,
 	)
 }
 
@@ -189,6 +190,7 @@ func TestRouteRequest_SameIPRotationPrefersTargetLatencySample(t *testing.T) {
 		pool.GetEntry,
 		func(_ string, _ node.Hash) (string, bool, []string, bool) { return "", true, nil, true },
 		func(_ netip.Addr) string { return "" },
+		nil,
 	)
 
 	order := make([]node.Hash, 0, 2)

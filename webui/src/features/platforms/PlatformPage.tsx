@@ -288,6 +288,28 @@ export function PlatformPage() {
               </div>
 
               <div className="field-group">
+                <label className="field-label" htmlFor="create-max-latency">
+                  {t("最大可接受延迟（ms）")}
+                </label>
+                <Input
+                  id="create-max-latency"
+                  type="number"
+                  min={0}
+                  max={600000}
+                  step={1}
+                  placeholder={t("0 表示不限制，例如 1000")}
+                  invalid={Boolean(createForm.formState.errors.max_acceptable_latency_ms)}
+                  {...createForm.register("max_acceptable_latency_ms")}
+                />
+                {createForm.formState.errors.max_acceptable_latency_ms?.message ? (
+                  <p className="field-error">{t(createForm.formState.errors.max_acceptable_latency_ms.message)}</p>
+                ) : null}
+                <p className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                  {t("按权威域名平均延迟硬过滤；超过该值的节点不会进入本平台可路由池。0 表示关闭。")}
+                </p>
+              </div>
+
+              <div className="field-group">
                 <label className="field-label" htmlFor="create-passive-circuit-breaker" style={{ visibility: "hidden" }}>
                   {t("禁用请求失败熔断")}
                 </label>
