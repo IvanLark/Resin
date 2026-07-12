@@ -15,7 +15,9 @@ type Platform struct {
 	ReverseProxyFixedAccountHeader   string `json:"reverse_proxy_fixed_account_header"`
 	AllocationPolicy                 string `json:"allocation_policy"`
 	PassiveCircuitBreakerDisabled    bool   `json:"passive_circuit_breaker_disabled"`
-	UpdatedAtNs                      int64  `json:"updated_at_ns"`
+	// MaxAcceptableLatencyMs 为平台硬过滤阈值（毫秒）。0 表示不启用。
+	MaxAcceptableLatencyMs int   `json:"max_acceptable_latency_ms"`
+	UpdatedAtNs            int64 `json:"updated_at_ns"`
 }
 
 // Subscription represents a node subscription source.

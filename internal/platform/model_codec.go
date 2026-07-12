@@ -43,6 +43,20 @@ func CompileRegexFilters(regexFilters []string) ([]*regexp.Regexp, error) {
 	return compiled, nil
 }
 
+// MaxAcceptableLatencyMsMax 是平台延迟硬过滤阈值的上限（毫秒）。
+const MaxAcceptableLatencyMsMax = 600_000
+
+// ValidateMaxAcceptableLatencyMs 校验延迟阈值。0 表示关闭。
+func ValidateMaxAcceptableLatencyMs(ms int) error {
+	if ms < 0 {
+		return fmt.Errorf("max_acceptable_latency_ms: must be >= 0")
+	}
+	if ms > MaxAcceptableLatencyMsMax {
+		return fmt.Errorf("max_acceptable_latency_ms: must be <= %d", MaxAcceptableLatencyMsMax)
+	}
+	return nil
+}
+
 // NewConfiguredPlatform builds a runtime platform with non-filter settings applied.
 func NewConfiguredPlatform(
 	id, name string,
@@ -54,11 +68,15 @@ func NewConfiguredPlatform(
 	fixedAccountHeader string,
 	allocationPolicy string,
 	passiveCircuitBreakerDisabled bool,
+	maxAcceptableLatencyMs int,
 ) *Platform {
 	normalizedFixedHeaders, fixedHeaders, err := NormalizeFixedAccountHeaders(fixedAccountHeader)
 	if err != nil {
 		normalizedFixedHeaders = strings.TrimSpace(fixedAccountHeader)
 		fixedHeaders = nil
+	}
+	if maxAcceptableLatencyMs < 0 {
+		maxAcceptableLatencyMs = 0
 	}
 	plat := NewPlatform(id, name, regexFilters, regionFilters)
 	plat.StickyTTLNs = stickyTTLNs
@@ -68,6 +86,7 @@ func NewConfiguredPlatform(
 	plat.ReverseProxyFixedAccountHeaders = append([]string(nil), fixedHeaders...)
 	plat.AllocationPolicy = ParseAllocationPolicy(allocationPolicy)
 	plat.PassiveCircuitBreakerDisabled = passiveCircuitBreakerDisabled
+	plat.MaxAcceptableLatencyMs = maxAcceptableLatencyMs
 	return plat
 }
 
@@ -113,6 +132,10 @@ func BuildFromModel(mp model.Platform) (*Platform, error) {
 		)
 	}
 
+	if err := ValidateMaxAcceptableLatencyMs(mp.MaxAcceptableLatencyMs); err != nil {
+		return nil, fmt.Errorf("decode platform %s: %w", mp.ID, err)
+	}
+
 	return NewConfiguredPlatform(
 		mp.ID,
 		mp.Name,
@@ -124,5 +147,6 @@ func BuildFromModel(mp model.Platform) (*Platform, error) {
 		fixedHeader,
 		mp.AllocationPolicy,
 		mp.PassiveCircuitBreakerDisabled,
+		mp.MaxAcceptableLatencyMs,
 	), nil
 }

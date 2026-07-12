@@ -38,6 +38,22 @@ export const platformFormSchema = z.object({
   reverse_proxy_fixed_account_header: z.string().optional(),
   allocation_policy: z.enum(allocationPolicies),
   passive_circuit_breaker_disabled: z.boolean(),
+  // 表单用字符串，提交时再转成整数，避免 z.preprocess 与 RHF 类型打架
+  max_acceptable_latency_ms: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || /^\d+$/.test(value), {
+      message: "最大可接受延迟必须是非负整数",
+    })
+    .refine((value) => {
+      if (value === "") {
+        return true;
+      }
+      const n = Number(value);
+      return n >= 0 && n <= 600000;
+    }, {
+      message: "最大可接受延迟范围为 0～600000",
+    }),
 }).superRefine((value, ctx) => {
   if (
     value.reverse_proxy_empty_account_behavior === "FIXED_HEADER" &&
@@ -63,6 +79,7 @@ export const defaultPlatformFormValues: PlatformFormValues = {
   reverse_proxy_fixed_account_header: "Authorization",
   allocation_policy: "BALANCED",
   passive_circuit_breaker_disabled: false,
+  max_acceptable_latency_ms: "0",
 };
 
 export function platformToFormValues(platform: Platform): PlatformFormValues {
@@ -79,7 +96,16 @@ export function platformToFormValues(platform: Platform): PlatformFormValues {
     reverse_proxy_fixed_account_header: platform.reverse_proxy_fixed_account_header,
     allocation_policy: platform.allocation_policy,
     passive_circuit_breaker_disabled: platform.passive_circuit_breaker_disabled,
+    max_acceptable_latency_ms: String(platform.max_acceptable_latency_ms ?? 0),
   };
+}
+
+function parseMaxAcceptableLatencyMs(raw: string): number {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return 0;
+  }
+  return Number(trimmed);
 }
 
 function toPlatformPayloadBase(values: PlatformFormValues) {
@@ -92,6 +118,7 @@ function toPlatformPayloadBase(values: PlatformFormValues) {
     reverse_proxy_fixed_account_header: parseHeaderLines(values.reverse_proxy_fixed_account_header).join("\n"),
     allocation_policy: values.allocation_policy,
     passive_circuit_breaker_disabled: values.passive_circuit_breaker_disabled,
+    max_acceptable_latency_ms: parseMaxAcceptableLatencyMs(values.max_acceptable_latency_ms),
   };
 }
 

@@ -18,6 +18,7 @@ type ApiPlatform = Omit<Platform, "regex_filters" | "region_filters"> & {
   reverse_proxy_empty_account_behavior?: Platform["reverse_proxy_empty_account_behavior"] | null;
   reverse_proxy_fixed_account_header?: string | null;
   passive_circuit_breaker_disabled?: boolean | null;
+  max_acceptable_latency_ms?: number | null;
 };
 
 type ApiPlatformLease = Partial<PlatformLease>;
@@ -46,6 +47,10 @@ function normalizePlatform(raw: ApiPlatform): Platform {
       typeof raw.reverse_proxy_fixed_account_header === "string" ? raw.reverse_proxy_fixed_account_header : "",
     passive_circuit_breaker_disabled:
       typeof raw.passive_circuit_breaker_disabled === "boolean" ? raw.passive_circuit_breaker_disabled : false,
+    max_acceptable_latency_ms:
+      typeof raw.max_acceptable_latency_ms === "number" && Number.isFinite(raw.max_acceptable_latency_ms)
+        ? Math.max(0, Math.trunc(raw.max_acceptable_latency_ms))
+        : 0,
   };
 }
 

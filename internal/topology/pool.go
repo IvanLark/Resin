@@ -442,7 +442,7 @@ func (p *GlobalNodePool) notifyAllPlatformsDirty(hash node.Hash) {
 		go func(plat *platform.Platform) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			plat.NotifyDirty(hash, getEntry, subLookup, p.geoLookup)
+			plat.NotifyDirty(hash, getEntry, subLookup, p.geoLookup, p.currentLatencyAuthorities())
 		}(plat)
 	}
 	wg.Wait()
@@ -476,7 +476,7 @@ func (p *GlobalNodePool) RebuildAllPlatforms() {
 		go func(plat *platform.Platform) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			plat.FullRebuild(poolRange, subLookup, p.geoLookup)
+			plat.FullRebuild(poolRange, subLookup, p.geoLookup, p.currentLatencyAuthorities())
 		}(plat)
 	}
 	wg.Wait()
@@ -488,7 +488,15 @@ func (p *GlobalNodePool) RebuildPlatform(plat *platform.Platform) {
 	poolRange := func(fn func(node.Hash, *node.NodeEntry) bool) {
 		p.nodes.Range(fn)
 	}
-	plat.FullRebuild(poolRange, subLookup, p.geoLookup)
+	plat.FullRebuild(poolRange, subLookup, p.geoLookup, p.currentLatencyAuthorities())
+}
+
+// currentLatencyAuthorities 返回用于平台延迟硬过滤的权威域名列表。
+func (p *GlobalNodePool) currentLatencyAuthorities() []string {
+	if p == nil || p.latencyAuthorities == nil {
+		return nil
+	}
+	return p.latencyAuthorities()
 }
 
 // --- Health Management ---
@@ -621,11 +629,10 @@ func (p *GlobalNodePool) RecordLatency(hash node.Hash, rawTarget string, latency
 
 	wasEmpty, evictedDomain, evicted := entry.LatencyTable.UpdateClassified(domain, *latency, decayWindow, isAuthority)
 
-	// If the table transitioned from empty to non-empty, the node might
-	// now satisfy the HasLatency filter — notify platforms.
-	if wasEmpty {
-		p.notifyAllPlatformsDirty(hash)
-	}
+	// 每次写入有效延迟样本后都通知平台重评。
+	// 除了 HasLatency 从无到有，延迟跨过 max_acceptable_latency_ms 阈值时也需要 dirty。
+	_ = wasEmpty
+	p.notifyAllPlatformsDirty(hash)
 
 	if p.onNodeLatencyChanged != nil {
 		p.onNodeLatencyChanged(hash, domain)

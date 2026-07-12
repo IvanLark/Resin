@@ -40,6 +40,9 @@ type Platform struct {
 	ReverseProxyFixedAccountHeaders  []string
 	AllocationPolicy                 AllocationPolicy
 	PassiveCircuitBreakerDisabled    bool
+	// MaxAcceptableLatencyMs 平台可接受的权威域名平均延迟上限（毫秒）。
+	// 0 表示不启用硬过滤；>0 时超过阈值的节点不进可路由池。
+	MaxAcceptableLatencyMs int
 
 	// Routable view & its lock.
 	// viewMu serializes both FullRebuild and NotifyDirty.
@@ -66,17 +69,19 @@ func (p *Platform) View() ReadOnlyView {
 
 // FullRebuild clears the routable view and re-evaluates all nodes from the pool.
 // Acquires viewMu — any concurrent NotifyDirty calls block until rebuild completes.
+// latencyAuthorities 用于延迟硬过滤时计算权威域名平均延迟；可为空。
 func (p *Platform) FullRebuild(
 	poolRange PoolRangeFunc,
 	subLookup node.SubLookupFunc,
 	geoLookup GeoLookupFunc,
+	latencyAuthorities []string,
 ) {
 	p.viewMu.Lock()
 	defer p.viewMu.Unlock()
 
 	p.view.Clear()
 	poolRange(func(h node.Hash, entry *node.NodeEntry) bool {
-		if p.evaluateNode(entry, subLookup, geoLookup) {
+		if p.evaluateNode(entry, subLookup, geoLookup, latencyAuthorities) {
 			p.view.Add(h)
 		}
 		return true
@@ -90,6 +95,7 @@ func (p *Platform) NotifyDirty(
 	getEntry GetEntryFunc,
 	subLookup node.SubLookupFunc,
 	geoLookup GeoLookupFunc,
+	latencyAuthorities []string,
 ) {
 	p.viewMu.Lock()
 	defer p.viewMu.Unlock()
@@ -101,7 +107,7 @@ func (p *Platform) NotifyDirty(
 		return
 	}
 
-	if p.evaluateNode(entry, subLookup, geoLookup) {
+	if p.evaluateNode(entry, subLookup, geoLookup, latencyAuthorities) {
 		p.view.Add(h)
 	} else {
 		p.view.Remove(h)
@@ -113,6 +119,7 @@ func (p *Platform) evaluateNode(
 	entry *node.NodeEntry,
 	subLookup node.SubLookupFunc,
 	geoLookup GeoLookupFunc,
+	latencyAuthorities []string,
 ) bool {
 	// 0. Disabled nodes are never routable.
 	if entry.IsDisabledBySubscriptions(subLookup) {
@@ -146,6 +153,16 @@ func (p *Platform) evaluateNode(
 	// 5. Has at least one latency record.
 	if !entry.HasLatency() {
 		return false
+	}
+
+	// 6. Optional hard latency cap against authority-domain average.
+	// 策略 A：阈值开启但算不出权威延迟时放行，避免冷启动把可路由池掏空。
+	if p.MaxAcceptableLatencyMs > 0 {
+		if avgMs, ok := node.AverageEWMAForDomainsMs(entry, latencyAuthorities); ok {
+			if avgMs > float64(p.MaxAcceptableLatencyMs) {
+				return false
+			}
+		}
 	}
 
 	return true
